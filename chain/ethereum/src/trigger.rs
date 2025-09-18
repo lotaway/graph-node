@@ -1,5 +1,7 @@
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
+use graph::components::ethereum::types::LightEthereumBlockFromV1To;
+use graph::components::ethereum::LightTransaction;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
@@ -17,6 +19,7 @@ use graph::prelude::web3::types::Transaction;
 use graph::prelude::web3::types::TransactionReceipt;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
+use graph::prelude::LightEthereumBlock;
 use graph::prelude::{CheapClone, EthereumCall};
 use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
@@ -37,15 +40,12 @@ use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
 use crate::runtime::abi::AscEthereumTransaction_0_0_6;
 
-// ETHDEP: This should be defined in only one place.
-type LightEthereumBlock = Block<Transaction>;
-
 static U256_DEFAULT: U256 = U256::zero();
 
 pub enum MappingTrigger {
     Log {
         block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
+        transaction: Arc<LightTransaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
         receipt: Option<Arc<TransactionReceipt>>,
@@ -53,7 +53,7 @@ pub enum MappingTrigger {
     },
     Call {
         block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
+        transaction: Arc<LightTransaction>,
         call: Arc<EthereumCall>,
         inputs: Vec<LogParam>,
         outputs: Vec<LogParam>,
@@ -84,12 +84,12 @@ impl std::fmt::Debug for MappingTrigger {
         #[derive(Debug)]
         enum MappingTriggerWithoutBlock {
             Log {
-                _transaction: Arc<Transaction>,
+                _transaction: Arc<LightTransaction>,
                 _log: Arc<Log>,
                 _params: Vec<LogParam>,
             },
             Call {
-                _transaction: Arc<Transaction>,
+                _transaction: Arc<LightTransaction>,
                 _call: Arc<EthereumCall>,
                 _inputs: Vec<LogParam>,
                 _outputs: Vec<LogParam>,
@@ -211,7 +211,7 @@ impl ToAscPtr for MappingTrigger {
                 }
             }
             MappingTrigger::Block { block } => {
-                let block = EthereumBlockData::from(block.as_ref());
+                let block = EthereumBlockData::from(&*block);
                 if heap.api_version() >= Version::new(0, 0, 6) {
                     asc_new::<AscEthereumBlock_0_0_6, _, _>(heap, &block, gas)?.erase()
                 } else {
@@ -412,11 +412,11 @@ impl TriggerData for EthereumTrigger {
 /// Ethereum block data.
 #[derive(Clone, Debug)]
 pub struct EthereumBlockData<'a> {
-    block: &'a Block<Transaction>,
+    block: &'a Block<LightTransaction>,
 }
 
-impl<'a> From<&'a Block<Transaction>> for EthereumBlockData<'a> {
-    fn from(block: &'a Block<Transaction>) -> EthereumBlockData<'a> {
+impl<'a> From<&'a Block<LightTransaction>> for EthereumBlockData<'a> {
+    fn from(block: &'a Block<LightTransaction>) -> EthereumBlockData<'a> {
         EthereumBlockData { block }
     }
 }
@@ -489,13 +489,13 @@ impl<'a> EthereumBlockData<'a> {
 /// Ethereum transaction data.
 #[derive(Clone, Debug)]
 pub struct EthereumTransactionData<'a> {
-    tx: &'a Transaction,
+    tx: &'a LightTransaction,
 }
 
 impl<'a> EthereumTransactionData<'a> {
     // We don't implement `From` because it causes confusion with the `from`
     // accessor method
-    fn new(tx: &'a Transaction) -> EthereumTransactionData<'a> {
+    fn new(tx: &'a LightTransaction) -> EthereumTransactionData<'a> {
         EthereumTransactionData { tx }
     }
 
@@ -550,8 +550,8 @@ pub struct EthereumEventData<'a> {
 
 impl<'a> EthereumEventData<'a> {
     pub fn new(
-        block: &'a Block<Transaction>,
-        tx: &'a Transaction,
+        block: &'a Block<LightTransaction>,
+        tx: &'a LightTransaction,
         log: &'a Log,
         params: &'a [LogParam],
     ) -> Self {
@@ -598,8 +598,8 @@ pub struct EthereumCallData<'a> {
 
 impl<'a> EthereumCallData<'a> {
     fn new(
-        block: &'a Block<Transaction>,
-        transaction: &'a Transaction,
+        block: &'a Block<LightTransaction>,
+        transaction: &'a LightTransaction,
         call: &'a EthereumCall,
         inputs: &'a [LogParam],
         outputs: &'a [LogParam],

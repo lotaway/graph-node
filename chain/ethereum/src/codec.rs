@@ -6,14 +6,13 @@ use anyhow::format_err;
 use graph::{
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
-    },
-    prelude::{
-        web3,
-        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+    }, prelude::{
+        web3::{self, types::{Bytes, Transaction, H160, H2048, H256, H64, U256, U64}},
         BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
-    },
+    }
 };
+use graph::components::ethereum::types::LightTransaction;
 use std::sync::Arc;
 use std::{convert::TryFrom, fmt::Debug};
 
@@ -209,6 +208,28 @@ impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
     }
 }
 
+impl<'a> TryInto<LightTransaction> for TransactionTraceAt<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> Result<LightTransaction, Self::Error> {
+        Ok(LightTransaction {
+            hash: self.trace.hash.try_decode_proto("transaction hash")?,
+            nonce: U256::from(self.trace.nonce),
+            transaction_index: Some(U64::from(self.trace.index as u64)),
+            from: Some(
+                self.trace
+                    .from
+                    .try_decode_proto("transaction from address")?,
+            ),
+            to: get_to_address(self.trace)?,
+            value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
+            gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
+            gas: U256::from(self.trace.gas_limit),
+            input: Bytes::from(self.trace.input.clone()),
+        })
+    }
+}
+
 impl TryInto<BlockFinality> for &Block {
     type Error = Error;
 
@@ -276,7 +297,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                         .transaction_traces
                         .iter()
                         .map(|t| TransactionTraceAt::new(t, self).try_into())
-                        .collect::<Result<Vec<web3::types::Transaction>, Error>>()?,
+                        .collect::<Result<Vec<LightTransaction>, Error>>()?,
                     size: Some(U256::from(self.size)),
                     mix_hash: Some(header.mix_hash.try_decode_proto("mix hash")?),
                     nonce: Some(H64::from_low_u64_be(header.nonce)),

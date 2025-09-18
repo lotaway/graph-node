@@ -10,6 +10,7 @@ use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
+use graph::components::ethereum::LightTransaction;
 use graph::data_source::subgraph;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
@@ -114,10 +115,8 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
     assert!(ptr.number > parent_ptr.number);
 
     // A 0x000.. transaction is used so `push_test_log` can use it
-    let transactions = vec![Transaction {
+    let transactions = vec![LightTransaction {
         hash: H256::zero(),
-        block_hash: Some(H256::from_slice(ptr.hash.as_slice())),
-        block_number: Some(ptr.number.into()),
         transaction_index: Some(0.into()),
         from: Some(H160::zero()),
         to: Some(H160::zero()),

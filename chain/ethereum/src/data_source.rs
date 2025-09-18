@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
+use graph::components::ethereum::types::{LightEthereumBlockFromV1To};
+use graph::components::ethereum::LightTransaction;
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
@@ -779,13 +781,10 @@ impl DataSource {
                 let transaction = if log.transaction_hash == block.hash
                     || log.transaction_hash == Some(H256::zero())
                 {
-                    Transaction {
+                    LightTransaction {
                         hash: log.transaction_hash.unwrap(),
-                        block_hash: block.hash,
-                        block_number: block.number,
-                        transaction_index: log.transaction_index,
                         from: Some(H160::zero()),
-                        ..Transaction::default()
+                        ..LightTransaction::default()
                     }
                 } else {
                     // This is the general case where the log's transaction hash does not match the block's hash

@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
 use web3::types::{
-    Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256,
-    U64,
+    Action, Address, Block, Bytes, Index, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256, U64
 };
 
 use crate::{
@@ -10,12 +9,123 @@ use crate::{
     prelude::BlockNumber,
 };
 
-pub type LightEthereumBlock = Block<Transaction>;
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct LightTransaction {
+    /// Hash
+    pub hash: H256,
+    /// Nonce
+    pub nonce: U256,
+    /// Transaction Index. None when pending.
+    #[serde(rename = "transactionIndex")]
+    pub transaction_index: Option<Index>,
+    /// Sender
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<Address>,
+    /// Recipient (None when contract creation)
+    pub to: Option<Address>,
+    /// Transfered value
+    pub value: U256,
+    /// Gas Price
+    #[serde(rename = "gasPrice")]
+    pub gas_price: Option<U256>,
+    /// Gas amount
+    pub gas: U256,
+    /// Input data
+    pub input: Bytes,
+}
+
+impl From<Transaction> for LightTransaction {
+    fn from(tx: Transaction) -> Self {
+        Self {
+            hash: tx.hash,
+            nonce: tx.nonce,
+            transaction_index: tx.transaction_index,
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            gas_price: tx.gas_price,
+            gas: tx.gas,
+            input: tx.input,
+        }
+    }
+}
+
+impl From<&Transaction> for LightTransaction {
+    fn from(tx: &Transaction) -> Self {
+        Self {
+            hash: tx.hash,
+            nonce: tx.nonce,
+            transaction_index: tx.transaction_index,
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            gas_price: tx.gas_price,
+            gas: tx.gas,
+            input: tx.input.clone(),
+        }
+    }
+}
+
+pub type LightEthereumBlockV1 = Block<Transaction>;
+
+pub type LightEthereumBlockV2 = Block<LightTransaction>;
+
+pub type LightEthereumBlock = LightEthereumBlockV2;
+
+pub trait LightEthereumBlockFromV1To<T> {
+    fn from_v1(block: LightEthereumBlockV1) -> T;
+}
+
+impl LightEthereumBlockFromV1To<LightEthereumBlock> for LightEthereumBlock {
+    fn from_v1(block: LightEthereumBlockV1) -> Self {
+        LightEthereumBlock {
+            hash: block.hash,
+            parent_hash: block.parent_hash,
+            // sha3_uncles: block.sha3_uncles,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number,
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            base_fee_per_gas: block.base_fee_per_gas,
+            extra_data: block.extra_data,
+            logs_bloom: block.logs_bloom,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty,
+            seal_fields: block.seal_fields,
+            uncles: block.uncles,
+            transactions: block.transactions.into_iter().map(LightTransaction::from).collect(),
+            size: block.size,
+            mix_hash: block.mix_hash,
+            nonce: block.nonce,
+        }
+    }
+
+}
+
+#[derive(Debug)]
+struct ConversionError;
+
+pub trait LightEthereumBlockTryFromV1To<T> {
+
+    fn try_from(block: LightEthereumBlockV1) -> T;
+}
+
+impl LightEthereumBlockTryFromV1To<Result<LightEthereumBlock, ConversionError>> for LightEthereumBlock {
+
+    fn try_from(block: LightEthereumBlockV1) -> Result<LightEthereumBlock, ConversionError> {
+        Ok(<LightEthereumBlock as LightEthereumBlockFromV1To<LightEthereumBlock>>::from_v1(block))
+    }
+}
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
+    fn transaction_for_log(&self, log: &Log) -> Option<LightTransaction>;
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<LightTransaction>;
     fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
     fn block_ptr(&self) -> BlockPtr;
@@ -27,13 +137,13 @@ impl LightEthereumBlockExt for LightEthereumBlock {
         BlockNumber::try_from(self.number.unwrap().as_u64()).unwrap()
     }
 
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+    fn transaction_for_log(&self, log: &Log) -> Option<LightTransaction> {
         log.transaction_hash
             .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
             .cloned()
     }
 
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<LightTransaction> {
         call.transaction_hash
             .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
             .cloned()
