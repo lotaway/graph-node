@@ -4,6 +4,7 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::blockchain::ExtendedBlockPtr;
 
+use graph::components::ethereum::types::LightEthereumBlockFromV1To;
 use graph::components::ethereum::types::StoreTransactionReceipt;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::ethereum::call;
@@ -48,9 +49,7 @@ use graph::{
     prelude::web3::transports::Batch,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
-use graph::components::ethereum::types::LightEthereumBlockFromV1To;
 use itertools::Itertools;
-use core::hash;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -770,11 +769,12 @@ impl EthereumAdapter {
                         .compat()
                         .from_err::<Error>()
                         .and_then(move |block| {
-                            block.and_then(|block| {
-                                Option::Some(LightEthereumBlock::from_v1(block))
-                            }).ok_or_else(|| {
-                                anyhow::anyhow!("Ethereum node did not find block {:?}", hash)
-                            }).map(Arc::new)
+                            block
+                                .and_then(|block| Option::Some(LightEthereumBlock::from_v1(block)))
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("Ethereum node did not find block {:?}", hash)
+                                })
+                                .map(Arc::new)
                         })
                         .compat()
                 })
@@ -1297,9 +1297,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         .await
                         .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
                     block_opt
-                        .and_then(|block| {
-                            Option::Some(LightEthereumBlock::from_v1(block))
-                        })
+                        .and_then(|block| Option::Some(LightEthereumBlock::from_v1(block)))
                         .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
                 }
             })
@@ -1349,9 +1347,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         .block_with_txs(BlockId::Hash(block_hash))
                         .await
                         .and_then(|opt_block| {
-                            Result::Ok(opt_block.and_then(|block| {
-                                Option::Some(LightEthereumBlock::from_v1(block))
-                            }))
+                            Result::Ok(
+                                opt_block.and_then(|block| {
+                                    Option::Some(LightEthereumBlock::from_v1(block))
+                                }),
+                            )
                         })
                         .map_err(Error::from)
                 }
@@ -1386,9 +1386,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         .block_with_txs(BlockId::Number(block_number.into()))
                         .await
                         .and_then(|opt_block| {
-                            Result::Ok(opt_block.and_then(|block| {
-                                Option::Some(LightEthereumBlock::from_v1(block))
-                            }))
+                            Result::Ok(
+                                opt_block.and_then(|block| {
+                                    Option::Some(LightEthereumBlock::from_v1(block))
+                                }),
+                            )
                         })
                         .map_err(Error::from)
                 }
@@ -1436,9 +1438,18 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         fetch_receipts_with_retry(web3, hashes, block_hash, logger, supports_block_receipts)
             .await
-            .map(|transaction_receipts| EthereumBlock {
+            .map(|transaction_receipts| {
+                let receipts: Vec<Arc<StoreTransactionReceipt>> = transaction_receipts.into_iter().filter(|r| r.logs.len() > 0).collect();
+                let receipt_hashes_set: HashSet<H256> = receipts.iter().map(|r| r.transaction_hash).collect();
+                let mut _block = block.clone();
+                _block.transactions = _block.transactions.into_iter().filter(|tx| receipt_hashes_set.contains(&tx.hash)).collect();
+                EthereumBlock {
                 block: Arc::new(block),
-                transaction_receipts: transaction_receipts.into_iter().map(|receipt|Arc::new(StoreTransactionReceipt::from((*receipt).clone()))).collect(),
+                transaction_receipts: receipts
+                    .into_iter()
+                    .map(|receipt| Arc::new(StoreTransactionReceipt::from((*receipt).clone())))
+                    .collect(),
+                }
             })
     }
 
@@ -2001,7 +2012,13 @@ pub(crate) fn parse_log_triggers(
                 let tx = &block.block.transactions[size];
                 let final_tx = match tx.hash == receipt.transaction_hash {
                     true => tx,
-                    false => &block.block.transactions.iter().find(|tx| tx.hash == receipt.transaction_hash).expect("inconsistent transaction receipt").clone(),
+                    false => &block
+                        .block
+                        .transactions
+                        .iter()
+                        .find(|tx| tx.hash == receipt.transaction_hash)
+                        .expect("inconsistent transaction receipt")
+                        .clone(),
                 };
                 EthereumTrigger::Log(LogRef::LogPosition(index, receipt.cheap_clone()))
             })
@@ -2191,7 +2208,8 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
         .collect::<BTreeMap<H256, LightTransactionReceipt>>();
 
     // Do we have a receipt for each transaction under analysis?
-    let mut receipts_and_transactions: Vec<(&LightTransaction, LightTransactionReceipt)> = Vec::new();
+    let mut receipts_and_transactions: Vec<(&LightTransaction, LightTransactionReceipt)> =
+        Vec::new();
     let mut transactions_without_receipt: Vec<&LightTransaction> = Vec::new();
     for transaction in transactions.iter() {
         if let Some(receipt) = receipts.remove(&transaction.hash) {
@@ -2289,7 +2307,14 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
         })
         .await
         .map_err(|_timeout| anyhow!(block_hash).into())
-        .and_then(|receipts| Result::Ok(receipts.into_iter().map(|receipt| Arc::new(StoreTransactionReceipt::from((*receipt).clone()))).collect()))
+        .and_then(|receipts| {
+            Result::Ok(
+                receipts
+                    .into_iter()
+                    .map(|receipt| Arc::new(StoreTransactionReceipt::from((*receipt).clone())))
+                    .collect(),
+            )
+        })
 }
 
 /// Deprecated. Attempts to fetch multiple transaction receipts in a batching contex.
@@ -2388,9 +2413,9 @@ async fn fetch_individual_receipts_with_retry(
         })
         .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
 
-    graph::tokio_stream::StreamExt::collect::<Result<Vec<Arc<StoreTransactionReceipt>>, IngestorError>>(
-        receipt_stream,
-    )
+    graph::tokio_stream::StreamExt::collect::<
+        Result<Vec<Arc<StoreTransactionReceipt>>, IngestorError>,
+    >(receipt_stream)
     .await
 }
 
@@ -2417,14 +2442,18 @@ async fn fetch_block_receipts_with_retry(
     match receipts_option {
         Some(receipts) => {
             // Create a HashSet from the transaction hashes of the receipts
-            let receipt_hashes_set: HashSet<_> =
+            let mut receipt_hashes_set: HashSet<H256> =
                 receipts.iter().map(|r| r.transaction_hash).collect();
 
             // Check if the set contains all the hashes and has the same length as the hashes vec
             if hashes.len() == receipt_hashes_set.len()
                 && hashes.iter().all(|hash| receipt_hashes_set.contains(hash))
             {
-                let transformed_receipts = receipts.into_iter().map(StoreTransactionReceipt::from).map(Arc::new).collect();
+                let transformed_receipts = receipts
+                    .into_iter()
+                    .map(StoreTransactionReceipt::from)
+                    .map(Arc::new)
+                    .collect();
                 Ok(transformed_receipts)
             } else {
                 // If there's a mismatch in numbers or a missing hash, return an error
@@ -2584,7 +2613,12 @@ async fn get_logs_and_transactions(
         let optional_receipt = log
             .transaction_hash
             .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
-        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(log), optional_receipt.and_then(|receipt|Option::Some(Arc::new(StoreTransactionReceipt::from((*receipt).clone()))))));
+        let value = EthereumTrigger::Log(LogRef::FullLog(
+            Arc::new(log),
+            optional_receipt.and_then(|receipt| {
+                Option::Some(Arc::new(StoreTransactionReceipt::from((*receipt).clone())))
+            }),
+        ));
         log_triggers.push(value);
     }
 
