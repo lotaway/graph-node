@@ -99,7 +99,7 @@ EXPOSE 8020
 EXPOSE 8030
 
 # For China Mainland users
-RUN sudo sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources
 RUN apt-get update \
     && apt-get install -y libpq-dev ca-certificates \
     netcat-openbsd
