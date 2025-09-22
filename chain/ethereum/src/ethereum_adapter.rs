@@ -1999,10 +1999,9 @@ pub(crate) fn parse_log_triggers(
             receipt.logs.iter().enumerate().map(move |(index, _)| {
                 let size = receipt.transaction_index.as_usize();
                 let tx = &block.block.transactions[size];
-                let final_tx = if tx.hash == receipt.transaction_hash {
-                    tx
-                } else {
-                    &block.block.transactions.iter().find(|tx| tx.hash == receipt.transaction_hash).expect("inconsistent transaction receipt").clone()
+                let final_tx = match tx.hash == receipt.transaction_hash {
+                    true => tx,
+                    false => &block.block.transactions.iter().find(|tx| tx.hash == receipt.transaction_hash).expect("inconsistent transaction receipt").clone(),
                 };
                 EthereumTrigger::Log(LogRef::LogPosition(index, receipt.cheap_clone()))
             })

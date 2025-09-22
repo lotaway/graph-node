@@ -3,15 +3,11 @@ use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
 use graph::{
-    prelude::{
-        ethabi,
-        web3::types::{Log, TransactionReceipt, H256},
-        BigInt,
-    },
-    runtime::{
-        asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType,
-        DeterministicHostError, FromAscObj, HostExportError, IndexForAscTypeId, ToAscObj,
-    },
+    components::ethereum::types::StoreTransactionReceipt, prelude::{
+        BigInt, ethabi, web3::types::{H256, Log, TransactionReceipt}
+    }, runtime::{
+        AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, FromAscObj, HostExportError, IndexForAscTypeId, ToAscObj, asc_get, asc_new, gas::GasCounter
+    }
 };
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{
@@ -627,6 +623,47 @@ where
     }
 }
 
+impl<'a, T, B> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
+    for (EthereumEventData<'a>, Option<&StoreTransactionReceipt>)
+where
+    T: AscType + AscIndexId,
+    B: AscType + AscIndexId,
+    EthereumTransactionData<'a>: ToAscObj<T>,
+    EthereumBlockData<'a>: ToAscObj<B>,
+{
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEthereumEvent_0_0_7<T, B>, HostExportError> {
+        let (event_data, optional_receipt) = self;
+        let AscEthereumEvent {
+            address,
+            log_index,
+            transaction_log_index,
+            log_type,
+            block,
+            transaction,
+            params,
+        } = event_data.to_asc_obj(heap, gas)?;
+        let receipt = if let Some(receipt_data) = optional_receipt {
+            asc_new(heap, receipt_data, gas)?
+        } else {
+            AscPtr::null()
+        };
+        Ok(AscEthereumEvent_0_0_7 {
+            address,
+            log_index,
+            transaction_log_index,
+            log_type,
+            block,
+            transaction,
+            params,
+            receipt,
+        })
+    }
+}
+
 impl ToAscObj<AscEthereumLog> for Log {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -675,6 +712,50 @@ impl ToAscObj<AscEthereumLog> for Log {
 }
 
 impl ToAscObj<AscEthereumTransactionReceipt> for &TransactionReceipt {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEthereumTransactionReceipt, HostExportError> {
+        Ok(AscEthereumTransactionReceipt {
+            transaction_hash: asc_new(heap, &self.transaction_hash, gas)?,
+            transaction_index: asc_new(heap, &BigInt::from(self.transaction_index), gas)?,
+            block_hash: self
+                .block_hash
+                .map(|block_hash| asc_new(heap, &block_hash, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            block_number: self
+                .block_number
+                .map(|block_number| asc_new(heap, &BigInt::from(block_number), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            cumulative_gas_used: asc_new(
+                heap,
+                &BigInt::from_unsigned_u256(&self.cumulative_gas_used),
+                gas,
+            )?,
+            gas_used: self
+                .gas_used
+                .map(|gas_used| asc_new(heap, &BigInt::from_unsigned_u256(&gas_used), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            contract_address: self
+                .contract_address
+                .map(|contract_address| asc_new(heap, &contract_address, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            logs: asc_new(heap, &self.logs, gas)?,
+            status: self
+                .status
+                .map(|status| asc_new(heap, &BigInt::from(status), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            root: self
+                .root
+                .map(|root| asc_new(heap, &root, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            logs_bloom: asc_new(heap, self.logs_bloom.as_bytes(), gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscEthereumTransactionReceipt> for &StoreTransactionReceipt {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,

@@ -1,6 +1,7 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use graph::blockchain::{BlockTime, ChainIdentifier};
+use graph::components::ethereum::EthereumBlock;
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;

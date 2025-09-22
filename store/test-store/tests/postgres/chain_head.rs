@@ -2,6 +2,7 @@
 //! the chain head pointer gets updated in various situations
 
 use graph::blockchain::{BlockHash, BlockPtr};
+use graph::components::ethereum::EthereumBlock;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::Bytes;
 use graph::env::ENV_VARS;
