@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use graph::prelude::web3::types::H256;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
-use graph::prelude::{serde_json as json, EthereumBlock};
+use graph::prelude::{serde_json as json};
 use graph::prelude::{BlockNumber, QueryStoreManager, QueryTarget};
 use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::DeploymentHash};

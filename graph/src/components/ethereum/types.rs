@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
 use web3::types::{
-    Action, Address, Block, Bytes, Index, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256, U64
+    Action, Address, Block, Bytes, Index, Log, Res, Trace, Transaction, TransactionReceipt, H2048,
+    H256, U256, U64,
 };
 
 use crate::{
     blockchain::{BlockPtr, BlockTime},
-    prelude::BlockNumber,
+    prelude::{transaction_receipt::LightTransactionReceipt, BlockNumber},
 };
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -72,6 +73,60 @@ pub type LightEthereumBlockV2 = Block<LightTransaction>;
 
 pub type LightEthereumBlock = LightEthereumBlockV2;
 
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreTransactionReceipt {
+    /// Transaction hash.
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: H256,
+    /// Index within the block.
+    #[serde(rename = "transactionIndex")]
+    pub transaction_index: Index,
+    /// Hash of the block this transaction was included within.
+    #[serde(rename = "blockHash")]
+    pub block_hash: Option<H256>,
+    /// Number of the block this transaction was included within.
+    #[serde(rename = "blockNumber")]
+    pub block_number: Option<U64>,
+    /// Cumulative gas used within the block after this was executed.
+    #[serde(rename = "cumulativeGasUsed")]
+    pub cumulative_gas_used: U256,
+    /// Gas used by this transaction alone.
+    ///
+    /// Gas used is `None` if the the client is running in light client mode.
+    #[serde(rename = "gasUsed")]
+    pub gas_used: Option<U256>,
+    /// Contract address created, or `None` if not a deployment.
+    #[serde(rename = "contractAddress")]
+    pub contract_address: Option<Address>,
+    /// Logs generated within this transaction.
+    pub logs: Vec<Log>,
+    /// Status: either 1 (success) or 0 (failure).
+    pub status: Option<U64>,
+    /// State root.
+    pub root: Option<H256>,
+    /// Logs bloom
+    #[serde(rename = "logsBloom")]
+    pub logs_bloom: H2048,
+}
+
+impl From<TransactionReceipt> for StoreTransactionReceipt {
+    fn from(receipt: TransactionReceipt) -> StoreTransactionReceipt {
+        Self {
+            transaction_hash: receipt.transaction_hash,
+            transaction_index: receipt.transaction_index,
+            block_hash: receipt.block_hash,
+            block_number: receipt.block_number,
+            cumulative_gas_used: receipt.cumulative_gas_used,
+            gas_used: receipt.gas_used,
+            contract_address: receipt.contract_address,
+            logs: receipt.logs,
+            status: receipt.status,
+            root: receipt.root,
+            logs_bloom: receipt.logs_bloom,
+        }
+    }
+}
+
 pub trait LightEthereumBlockFromV1To<T> {
     fn from_v1(block: LightEthereumBlockV1) -> T;
 }
@@ -98,27 +153,32 @@ impl LightEthereumBlockFromV1To<LightEthereumBlock> for LightEthereumBlock {
             total_difficulty: block.total_difficulty,
             seal_fields: block.seal_fields,
             uncles: block.uncles,
-            transactions: block.transactions.into_iter().map(LightTransaction::from).collect(),
+            transactions: block
+                .transactions
+                .into_iter()
+                .map(LightTransaction::from)
+                .collect(),
             size: block.size,
             mix_hash: block.mix_hash,
             nonce: block.nonce,
         }
     }
-
 }
 
 #[derive(Debug)]
 struct ConversionError;
 
 pub trait LightEthereumBlockTryFromV1To<T> {
-
     fn try_from(block: LightEthereumBlockV1) -> T;
 }
 
-impl LightEthereumBlockTryFromV1To<Result<LightEthereumBlock, ConversionError>> for LightEthereumBlock {
-
+impl LightEthereumBlockTryFromV1To<Result<LightEthereumBlock, ConversionError>>
+    for LightEthereumBlock
+{
     fn try_from(block: LightEthereumBlockV1) -> Result<LightEthereumBlock, ConversionError> {
-        Ok(<LightEthereumBlock as LightEthereumBlockFromV1To<LightEthereumBlock>>::from_v1(block))
+        Ok(<LightEthereumBlock as LightEthereumBlockFromV1To<
+            LightEthereumBlock,
+        >>::from_v1(block))
     }
 }
 
@@ -215,10 +275,31 @@ pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-pub struct EthereumBlock {
+pub struct EthereumBlockV1 {
     pub block: Arc<LightEthereumBlock>,
     pub transaction_receipts: Vec<Arc<TransactionReceipt>>,
 }
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct EthereumBlockV2 {
+    pub block: Arc<LightEthereumBlock>,
+    pub transaction_receipts: Vec<Arc<StoreTransactionReceipt>>,
+}
+
+impl From<EthereumBlockV1> for EthereumBlockV2 {
+    fn from(b: EthereumBlockV1) -> Self {
+        Self {
+            block: b.block,
+            transaction_receipts: b
+                .transaction_receipts
+                .into_iter()
+                .map(|arc_receipt| StoreTransactionReceipt::from((*arc_receipt).clone()))
+                .map(Arc::new).collect(),
+        }
+    }
+}
+
+pub type EthereumBlock = EthereumBlockV2;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EthereumCall {

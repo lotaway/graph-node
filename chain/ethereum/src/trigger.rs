@@ -1,6 +1,7 @@
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::components::ethereum::types::LightEthereumBlockFromV1To;
+use graph::components::ethereum::types::StoreTransactionReceipt;
 use graph::components::ethereum::LightTransaction;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
@@ -14,9 +15,8 @@ use graph::prelude::ethabi::ethereum_types::U64;
 use graph::prelude::ethabi::Address;
 use graph::prelude::ethabi::LogParam;
 use graph::prelude::web3::types::Block;
-use graph::prelude::web3::types::Log;
+use graph::prelude::web3::types::Log; 
 use graph::prelude::web3::types::Transaction;
-use graph::prelude::web3::types::TransactionReceipt;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::LightEthereumBlock;
@@ -48,7 +48,7 @@ pub enum MappingTrigger {
         transaction: Arc<LightTransaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
-        receipt: Option<Arc<TransactionReceipt>>,
+        receipt: Option<Arc<StoreTransactionReceipt>>,
         calls: Vec<DeclaredCall>,
     },
     Call {
@@ -224,8 +224,8 @@ impl ToAscPtr for MappingTrigger {
 
 #[derive(Clone, Debug)]
 pub enum LogRef {
-    FullLog(Arc<Log>, Option<Arc<TransactionReceipt>>),
-    LogPosition(usize, Arc<TransactionReceipt>),
+    FullLog(Arc<Log>, Option<Arc<StoreTransactionReceipt>>),
+    LogPosition(usize, Arc<StoreTransactionReceipt>),
 }
 
 impl LogRef {
@@ -236,7 +236,7 @@ impl LogRef {
         }
     }
 
-    pub fn receipt(&self) -> Option<&Arc<TransactionReceipt>> {
+    pub fn receipt(&self) -> Option<&Arc<StoreTransactionReceipt>> {
         match self {
             LogRef::FullLog(_, receipt) => receipt.as_ref(),
             LogRef::LogPosition(_, receipt) => Some(receipt),

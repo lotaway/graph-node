@@ -6,9 +6,9 @@ use anyhow::format_err;
 use graph::{
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
-    }, prelude::{
+    }, components::ethereum::types::{EthereumBlock, StoreTransactionReceipt}, prelude::{
         web3::{self, types::{Bytes, Transaction, H160, H2048, H256, H64, U256, U64}},
-        BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
+        BlockNumber, Error, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
     }
 };
@@ -373,7 +373,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                     .into_iter()
                     // Transaction receipts will be shared along the code, so we put them into an
                     // Arc here to avoid excessive cloning.
-                    .map(Arc::new)
+                    .map(|receipt| Arc::new(StoreTransactionReceipt::from(receipt)))
                     .collect(),
             },
             // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block

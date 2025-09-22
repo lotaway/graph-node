@@ -1,6 +1,7 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, ParamType, Token};
 use graph::blockchain::ChainIdentifier;
+use graph::components::ethereum::EthereumBlock;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
 use graph::data_source::common::ContractCall;

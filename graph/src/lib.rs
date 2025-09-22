@@ -114,7 +114,7 @@ pub mod prelude {
     pub use crate::blockchain::{BlockHash, BlockPtr};
 
     pub use crate::components::ethereum::{
-        EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
+        EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
         LightEthereumBlockExt,
     };
     pub use crate::components::graphql::{GraphQLMetrics, GraphQlRunner};

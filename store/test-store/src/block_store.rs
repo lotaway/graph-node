@@ -7,8 +7,7 @@ use graph::components::store::BlockStore;
 use graph::{
     blockchain::Block as BlockchainBlock,
     prelude::{
-        serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr,
-        EthereumBlock, LightEthereumBlock,
+        serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr, LightEthereumBlock,
     },
 };
 use graph_chain_ethereum::codec::{Block, BlockHeader};

@@ -3,10 +3,11 @@
 //! This module exposes the [`LightTransactionReceipt`] type, which holds basic information about
 //! the retrieved transaction receipts.
 
+use serde::{Deserialize, Serialize};
 use web3::types::{TransactionReceipt, H256, U256, U64};
 
 /// Like web3::types::Receipt, but with fewer fields.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LightTransactionReceipt {
     pub transaction_hash: H256,
     pub transaction_index: U64,

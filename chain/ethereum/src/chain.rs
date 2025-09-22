@@ -6,13 +6,14 @@ use graph::blockchain::{
     BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, ExtendedBlockPtr,
     TriggerFilterWrapper, TriggersAdapterSelector,
 };
+use graph::components::ethereum::EthereumBlock;
 use graph::components::network_provider::ChainName;
 use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::futures03::TryStreamExt;
 use graph::prelude::{
-    retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
+    retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry, StoreError,
 };
 use graph::schema::InputSchema;

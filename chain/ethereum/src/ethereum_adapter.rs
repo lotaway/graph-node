@@ -4,6 +4,7 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::blockchain::ExtendedBlockPtr;
 
+use graph::components::ethereum::types::StoreTransactionReceipt;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
@@ -49,6 +50,7 @@ use graph::{
 };
 use graph::components::ethereum::types::LightEthereumBlockFromV1To;
 use itertools::Itertools;
+use core::hash;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -1436,7 +1438,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .await
             .map(|transaction_receipts| EthereumBlock {
                 block: Arc::new(block),
-                transaction_receipts,
+                transaction_receipts: transaction_receipts.into_iter().map(|receipt|Arc::new(StoreTransactionReceipt::from((*receipt).clone()))).collect(),
             })
     }
 
@@ -1995,6 +1997,13 @@ pub(crate) fn parse_log_triggers(
         .iter()
         .flat_map(move |receipt| {
             receipt.logs.iter().enumerate().map(move |(index, _)| {
+                let size = receipt.transaction_index.as_usize();
+                let tx = &block.block.transactions[size];
+                let final_tx = if tx.hash == receipt.transaction_hash {
+                    tx
+                } else {
+                    &block.block.transactions.iter().find(|tx| tx.hash == receipt.transaction_hash).expect("inconsistent transaction receipt").clone()
+                };
                 EthereumTrigger::Log(LogRef::LogPosition(index, receipt.cheap_clone()))
             })
         })
@@ -2263,7 +2272,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     hashes: Vec<H256>,
     block_hash: H256,
     logger: Logger,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<StoreTransactionReceipt>>, IngestorError> {
     let retry_log_message = format!(
         "batch eth_getTransactionReceipt RPC call for block {:?}",
         block_hash
@@ -2281,6 +2290,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
         })
         .await
         .map_err(|_timeout| anyhow!(block_hash).into())
+        .and_then(|receipts| Result::Ok(receipts.into_iter().map(|receipt| Arc::new(StoreTransactionReceipt::from((*receipt).clone()))).collect()))
 }
 
 /// Deprecated. Attempts to fetch multiple transaction receipts in a batching contex.
@@ -2347,7 +2357,7 @@ async fn fetch_receipts_with_retry(
     block_hash: H256,
     logger: Logger,
     supports_block_receipts: bool,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<StoreTransactionReceipt>>, IngestorError> {
     if supports_block_receipts {
         return fetch_block_receipts_with_retry(web3, hashes, block_hash, logger).await;
     }
@@ -2360,7 +2370,7 @@ async fn fetch_individual_receipts_with_retry(
     hashes: Vec<H256>,
     block_hash: H256,
     logger: Logger,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<StoreTransactionReceipt>>, IngestorError> {
     if ENV_VARS.fetch_receipts_in_batches {
         return fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger)
             .await;
@@ -2379,7 +2389,7 @@ async fn fetch_individual_receipts_with_retry(
         })
         .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
 
-    graph::tokio_stream::StreamExt::collect::<Result<Vec<Arc<TransactionReceipt>>, IngestorError>>(
+    graph::tokio_stream::StreamExt::collect::<Result<Vec<Arc<StoreTransactionReceipt>>, IngestorError>>(
         receipt_stream,
     )
     .await
@@ -2391,7 +2401,7 @@ async fn fetch_block_receipts_with_retry(
     hashes: Vec<H256>,
     block_hash: H256,
     logger: Logger,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<StoreTransactionReceipt>>, IngestorError> {
     let logger = logger.cheap_clone();
     let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
 
@@ -2415,7 +2425,7 @@ async fn fetch_block_receipts_with_retry(
             if hashes.len() == receipt_hashes_set.len()
                 && hashes.iter().all(|hash| receipt_hashes_set.contains(hash))
             {
-                let transformed_receipts = receipts.into_iter().map(Arc::new).collect();
+                let transformed_receipts = receipts.into_iter().map(StoreTransactionReceipt::from).map(Arc::new).collect();
                 Ok(transformed_receipts)
             } else {
                 // If there's a mismatch in numbers or a missing hash, return an error
@@ -2435,7 +2445,7 @@ async fn fetch_transaction_receipt_with_retry(
     transaction_hash: H256,
     block_hash: H256,
     logger: Logger,
-) -> Result<Arc<TransactionReceipt>, IngestorError> {
+) -> Result<Arc<StoreTransactionReceipt>, IngestorError> {
     let logger = logger.cheap_clone();
     let retry_log_message = format!(
         "eth_getTransactionReceipt RPC call for transaction {:?}",
@@ -2451,6 +2461,7 @@ async fn fetch_transaction_receipt_with_retry(
         .and_then(move |some_receipt| {
             resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
         })
+        .and_then(|receipt| Ok(StoreTransactionReceipt::from(receipt)))
         .map(Arc::new)
 }
 
@@ -2574,7 +2585,7 @@ async fn get_logs_and_transactions(
         let optional_receipt = log
             .transaction_hash
             .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
-        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(log), optional_receipt));
+        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(log), optional_receipt.and_then(|receipt|Option::Some(Arc::new(StoreTransactionReceipt::from((*receipt).clone()))))));
         log_triggers.push(value);
     }
 
@@ -2587,10 +2598,10 @@ async fn get_transaction_receipts_for_transaction_hashes(
     transaction_hashes_by_block: &HashMap<H256, HashSet<H256>>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     logger: Logger,
-) -> Result<HashMap<H256, Arc<TransactionReceipt>>, anyhow::Error> {
+) -> Result<HashMap<H256, Arc<StoreTransactionReceipt>>, anyhow::Error> {
     use std::collections::hash_map::Entry::Vacant;
 
-    let mut receipts_by_hash: HashMap<H256, Arc<TransactionReceipt>> = HashMap::new();
+    let mut receipts_by_hash: HashMap<H256, Arc<StoreTransactionReceipt>> = HashMap::new();
 
     // Return early if input set is empty
     if transaction_hashes_by_block.is_empty() {
@@ -2667,10 +2678,11 @@ mod tests {
     use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 
     use super::{
-        check_block_receipt_support, parse_block_triggers, EthereumBlock, EthereumBlockFilter,
+        check_block_receipt_support, parse_block_triggers, EthereumBlockFilter,
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
+    use graph::components::ethereum::EthereumBlock;
     use graph::prelude::ethabi::ethereum_types::U64;
     use graph::prelude::tokio::{self};
     use graph::prelude::web3::transports::test::TestTransport;
