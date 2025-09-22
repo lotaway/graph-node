@@ -45,6 +45,8 @@ RUN apt-get update \
 
 # Debug image to access core dumps
 FROM graph-node-build AS graph-node-debug
+# For China Mainland users
+COPY ./sources.list /etc/apt/sources.list
 RUN apt-get update \
     && apt-get install -y curl gdb postgresql-client
 
@@ -96,6 +98,8 @@ EXPOSE 8020
 # Indexing status port
 EXPOSE 8030
 
+# For China Mainland users
+RUN sudo sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources
 RUN apt-get update \
     && apt-get install -y libpq-dev ca-certificates \
     netcat-openbsd
