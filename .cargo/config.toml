@@ -2,4 +2,3 @@
 # https://blog.rust-lang.org/2023/03/09/Rust-1.68.0.html#cargos-sparse-protocol)
 # becomes the default.
 [registries.crates-io]
-protocol = "sparse"

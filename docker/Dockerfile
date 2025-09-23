@@ -8,6 +8,8 @@ FROM golang:bookworm AS envsubst
 
 # v1.2.0
 ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
+# For China Mainland users
+RUN go env -w GO111MODULE=on && go env -w GOPROXY=https://goproxy.cn,direct
 # We ship `envsubst` with the final image to facilitate env. var. templating in
 # the configuration file.
 RUN go install github.com/a8m/envsubst/cmd/envsubst@$ENVSUBST_COMMIT_SHA \
@@ -22,9 +24,22 @@ ARG TAG_NAME=unknown
 
 ADD . /graph-node
 
+# Start - For China Mainland users
+COPY ./docker/sources.list /etc/apt/sources.list
+RUN rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/debian.sources
+# End - For China Mainland users
 RUN apt-get update \
-    && apt-get install -y cmake protobuf-compiler && \
-    cd /graph-node && \
+    && apt-get install -y cmake protobuf-compiler
+
+# Start - For China Mainland users
+ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
+ENV RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
+ENV CARGO_HTTP_RETRY=3
+ENV CARGO_HTTP_TIMEOUT=60
+RUN mkdir -p /root/.cargo
+COPY ./docker/.cargo/config.toml /root/.cargo/config.toml
+# End - For China Mainland users
+RUN cd /graph-node && \
     RUSTFLAGS="-g" cargo build --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
     && cp target/release/graphman /usr/local/bin/graphman \
@@ -45,8 +60,10 @@ RUN apt-get update \
 
 # Debug image to access core dumps
 FROM graph-node-build AS graph-node-debug
-# For China Mainland users
-COPY ./sources.list /etc/apt/sources.list
+# Start - For China Mainland users
+COPY ./docker/sources.list /etc/apt/sources.list
+RUN rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/debian.sources
+# End - For China Mainland users
 RUN apt-get update \
     && apt-get install -y curl gdb postgresql-client
 
@@ -98,8 +115,10 @@ EXPOSE 8020
 # Indexing status port
 EXPOSE 8030
 
-# For China Mainland users
-RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources
+# Start - For China Mainland users
+COPY ./docker/sources.list /etc/apt/sources.list
+RUN rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/debian.sources
+# End - For China Mainland users
 RUN apt-get update \
     && apt-get install -y libpq-dev ca-certificates \
     netcat-openbsd

@@ -16,7 +16,8 @@ then
 fi
 for stage in graph-node-build graph-node graph-node-debug
 do
-    $docker build --target $stage \
+    $docker build --network host \
+            --target $stage \
             --build-arg "COMMIT_SHA=$COMMIT_SHA" \
             --build-arg "REPO_NAME=$REPO_NAME" \
             --build-arg "BRANCH_NAME=$BRANCH_NAME" \
