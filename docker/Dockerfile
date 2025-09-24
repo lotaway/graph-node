@@ -38,6 +38,7 @@ ENV CARGO_HTTP_RETRY=3
 ENV CARGO_HTTP_TIMEOUT=60
 RUN mkdir -p /root/.cargo
 COPY ./docker/.cargo/config.toml /root/.cargo/config.toml
+# RUN git config --global http.proxy http://localhost:7890
 # End - For China Mainland users
 RUN cd /graph-node && \
     RUSTFLAGS="-g" cargo build --release --package graph-node \
