@@ -40,6 +40,7 @@ RUN mkdir -p /root/.cargo
 COPY ./docker/.cargo/config.toml /root/.cargo/config.toml
 # RUN git config --global http.proxy http://localhost:7890
 # End - For China Mainland users
+RUN rustc --version
 RUN cd /graph-node && \
     RUSTFLAGS="-g" cargo build --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
