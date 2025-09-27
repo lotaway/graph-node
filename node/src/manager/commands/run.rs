@@ -58,7 +58,7 @@ pub async fn run(
     let logger_factory = LoggerFactory::new(logger.clone(), None, metrics_ctx.registry.clone());
 
     // FIXME: Hard-coded IPFS config, take it from config file instead?
-    let ipfs_client = graph::ipfs::new_ipfs_client(&ipfs_url, &logger).await?;
+    let ipfs_client = graph::ipfs::new_ipfs_client(&ipfs_url, &metrics_registry, &logger).await?;
 
     let ipfs_service = ipfs_service(
         ipfs_client.cheap_clone(),
@@ -158,7 +158,6 @@ pub async fn run(
     // Create IPFS-based subgraph provider
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
-        link_resolver.cheap_clone(),
         subgraph_instance_manager,
         sg_metrics,
     ));

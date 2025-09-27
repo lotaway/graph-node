@@ -43,7 +43,7 @@ use tokio::sync::mpsc;
 git_testament!(TESTAMENT);
 
 /// Sets up metrics and monitoring
-fn setup_metrics(logger: &Logger) -> (Arc<Registry>, Arc<MetricsRegistry>) {
+pub fn setup_metrics(logger: &Logger) -> (Arc<Registry>, Arc<MetricsRegistry>) {
     // Set up Prometheus registry
     let prometheus_registry = Arc::new(Registry::new());
     let metrics_registry = Arc::new(MetricsRegistry::new(
@@ -294,12 +294,8 @@ fn build_subgraph_registrar(
     );
 
     // Create IPFS-based subgraph provider
-    let subgraph_provider = IpfsSubgraphAssignmentProvider::new(
-        &logger_factory,
-        link_resolver.clone(),
-        subgraph_instance_manager,
-        sg_count,
-    );
+    let subgraph_provider =
+        IpfsSubgraphAssignmentProvider::new(&logger_factory, subgraph_instance_manager, sg_count);
 
     // Check version switching mode environment variable
     let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
@@ -363,6 +359,8 @@ pub async fn run(
     ipfs_service: IpfsService,
     link_resolver: Arc<dyn LinkResolver>,
     dev_updates: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
+    prometheus_registry: Arc<Registry>,
+    metrics_registry: Arc<MetricsRegistry>,
 ) {
     // Log version information
     info!(
@@ -400,9 +398,6 @@ pub async fn run(
     let metrics_port = opt.metrics_port;
 
     info!(logger, "Starting up"; "node_id" => &node_id);
-
-    // Set up metrics
-    let (prometheus_registry, metrics_registry) = setup_metrics(&logger);
 
     // Optionally, identify the Elasticsearch logging configuration
     let elastic_config = opt
