@@ -123,7 +123,10 @@ COPY ./docker/sources.list /etc/apt/sources.list
 RUN rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/debian.sources
 # End - For China Mainland users
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates \
+    # && apt-get install -y libpq-dev ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates && \
+    update-ca-certificates --fresh && \
+    apt-get install -y libpq-dev \
     netcat-openbsd
 
 ADD docker/wait_for docker/start /usr/local/bin/
@@ -131,5 +134,6 @@ COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /
 COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY --from=envsubst /go/bin/envsubst /usr/local/bin/
 COPY docker/Dockerfile /Dockerfile
+RUN chmod +x /usr/local/bin/start
 CMD ["start"]
 

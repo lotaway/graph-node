@@ -4,7 +4,7 @@ deb-src http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main restricted uni
 deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main restricted universe multiverse
 deb-src http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main restricted universe multiverse
 
-deb https//mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main restricted universe multiverse
 deb-src http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main restricted universe multiverse
 
 deb http://mirrors.tuna.tsinghua.edu.cn/debian-security bookworm-security main restricted universe multiverse
