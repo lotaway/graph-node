@@ -4,10 +4,11 @@ include:
 services:
   graph-node:
     # image: lotaway/graph-node
-    build:
-      context: ..
-      dockerfile: ./docker/Dockerfile
-      target: graph-node
+    image: graph-node:latest
+    # build:
+      # context: ..
+      # dockerfile: ./docker/Dockerfile
+      # target: graph-node
     container_name: default-graph-node
     ports:
       - "${GRAPH_NODE_PORT:-8000}:8000"
