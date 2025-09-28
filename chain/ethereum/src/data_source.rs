@@ -1,12 +1,9 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
-<<<<<<< HEAD
 use graph::components::ethereum::types::{LightEthereumBlockFromV1To};
 use graph::components::ethereum::LightTransaction;
-=======
 use graph::components::link_resolver::LinkResolverContext;
->>>>>>> a675c22d192e39ffb40dba3bc31eade79c2d37f4
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};

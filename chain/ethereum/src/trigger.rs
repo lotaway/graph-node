@@ -211,13 +211,8 @@ impl ToAscPtr for MappingTrigger {
                 }
             }
             MappingTrigger::Block { block } => {
-<<<<<<< HEAD
-                let block = EthereumBlockData::from(&*block);
-                if heap.api_version() >= Version::new(0, 0, 6) {
-=======
                 let block = EthereumBlockData::from(block.as_ref());
                 if heap.api_version() >= &Version::new(0, 0, 6) {
->>>>>>> a675c22d192e39ffb40dba3bc31eade79c2d37f4
                     asc_new::<AscEthereumBlock_0_0_6, _, _>(heap, &block, gas)?.erase()
                 } else {
                     asc_new::<AscEthereumBlock, _, _>(heap, &block, gas)?.erase()
