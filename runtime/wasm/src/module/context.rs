@@ -48,12 +48,8 @@ impl WasmInstanceContext<'_> {
         self.inner.data_mut()
     }
 
-    pub fn asc_heap_ref(&self) -> &AscHeapCtx {
-        self.as_ref().asc_heap_ref()
-    }
-
-    pub fn asc_heap_mut(&mut self) -> &mut AscHeapCtx {
-        self.as_mut().asc_heap_mut()
+    pub fn asc_heap(&self) -> &Arc<AscHeapCtx> {
+        self.as_ref().asc_heap()
     }
 
     pub fn suspend_timeout(&mut self) {
@@ -96,7 +92,7 @@ pub struct WasmInstanceData {
 
     // This option is needed to break the cyclic dependency between, instance, store, and context.
     // during execution it should always be populated.
-    asc_heap: Option<AscHeapCtx>,
+    asc_heap: Option<Arc<AscHeapCtx>>,
 }
 
 impl WasmInstanceData {
@@ -117,15 +113,12 @@ impl WasmInstanceData {
         }
     }
 
-    pub fn set_asc_heap(&mut self, asc_heap: AscHeapCtx) {
+    pub fn set_asc_heap(&mut self, asc_heap: Arc<AscHeapCtx>) {
         self.asc_heap = Some(asc_heap);
     }
 
-    pub fn asc_heap_ref(&self) -> &AscHeapCtx {
-        self.asc_heap.as_ref().unwrap()
-    }
-    pub fn asc_heap_mut(&mut self) -> &mut AscHeapCtx {
-        self.asc_heap.as_mut().unwrap()
+    pub fn asc_heap(&self) -> &Arc<AscHeapCtx> {
+        self.asc_heap.as_ref().expect("asc_heap not set")
     }
 
     pub fn take_state(mut self) -> BlockState {
@@ -609,14 +602,9 @@ impl WasmInstanceContext<'_> {
         // Pause the timeout while running ipfs_map, and resume it when done.
         self.suspend_timeout();
         let start_time = Instant::now();
-        let output_states = HostExports::ipfs_map(
-            &self.as_ref().ctx.host_exports.link_resolver.cheap_clone(),
-            self.as_ref(),
-            link.clone(),
-            &callback,
-            user_data,
-            flags,
-        )?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let output_states =
+            host_exports.ipfs_map(self.as_ref(), link.clone(), &callback, user_data, flags)?;
         self.start_timeout();
 
         debug!(

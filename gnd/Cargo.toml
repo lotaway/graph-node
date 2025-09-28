@@ -29,4 +29,4 @@ pq-sys = { version = "0.7.2", features = ["bundled"] }
 openssl-sys = { version = "0.9.100", features = ["vendored"] }
 
 [target.'cfg(unix)'.dependencies]
-pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
+pgtemp = { git = "https://bgithub.xyz/graphprotocol/pgtemp", branch = "initdb-args" }

@@ -36,7 +36,7 @@ use graph::{
             self,
             types::{
                 Address, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter,
-                FilterBuilder, Log, Transaction, TransactionReceipt, H256,
+                FilterBuilder, Log, TransactionReceipt, H256,
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
@@ -2010,7 +2010,7 @@ pub(crate) fn parse_log_triggers(
             receipt.logs.iter().enumerate().map(move |(index, _)| {
                 let size = receipt.transaction_index.as_usize();
                 let tx = &block.block.transactions[size];
-                let final_tx = match tx.hash == receipt.transaction_hash {
+                let _tx = match tx.hash == receipt.transaction_hash {
                     true => tx,
                     false => &block
                         .block
@@ -2442,7 +2442,7 @@ async fn fetch_block_receipts_with_retry(
     match receipts_option {
         Some(receipts) => {
             // Create a HashSet from the transaction hashes of the receipts
-            let mut receipt_hashes_set: HashSet<H256> =
+            let receipt_hashes_set: HashSet<H256> =
                 receipts.iter().map(|r| r.transaction_hash).collect();
 
             // Check if the set contains all the hashes and has the same length as the hashes vec

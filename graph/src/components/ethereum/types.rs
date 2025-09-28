@@ -7,7 +7,7 @@ use web3::types::{
 
 use crate::{
     blockchain::{BlockPtr, BlockTime},
-    prelude::{transaction_receipt::LightTransactionReceipt, BlockNumber},
+    prelude::{BlockNumber},
 };
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

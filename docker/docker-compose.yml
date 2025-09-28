@@ -6,7 +6,8 @@ services:
     # image: lotaway/graph-node
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: ./docker/Dockerfile
+      target: graph-node
     container_name: default-graph-node
     ports:
       - "${GRAPH_NODE_PORT:-8000}:8000"

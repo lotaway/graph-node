@@ -15,8 +15,7 @@ use graph::prelude::ethabi::ethereum_types::U64;
 use graph::prelude::ethabi::Address;
 use graph::prelude::ethabi::LogParam;
 use graph::prelude::web3::types::Block;
-use graph::prelude::web3::types::Log; 
-use graph::prelude::web3::types::Transaction;
+use graph::prelude::web3::types::Log;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::LightEthereumBlock;
@@ -151,7 +150,7 @@ impl ToAscPtr for MappingTrigger {
                     log.as_ref(),
                     &params,
                 );
-                if api_version >= API_VERSION_0_0_7 {
+                if api_version >= &API_VERSION_0_0_7 {
                     asc_new::<
                         AscEthereumEvent_0_0_7<
                             AscEthereumTransaction_0_0_6,
@@ -161,14 +160,14 @@ impl ToAscPtr for MappingTrigger {
                         _,
                     >(heap, &(ethereum_event_data, receipt.as_deref()), gas)?
                     .erase()
-                } else if api_version >= API_VERSION_0_0_6 {
+                } else if api_version >= &API_VERSION_0_0_6 {
                     asc_new::<
                         AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
                         _,
                         _,
                     >(heap, &ethereum_event_data, gas)?
                     .erase()
-                } else if api_version >= API_VERSION_0_0_2 {
+                } else if api_version >= &API_VERSION_0_0_2 {
                     asc_new::<
                             AscEthereumEvent<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
                             _,
@@ -192,14 +191,14 @@ impl ToAscPtr for MappingTrigger {
                 outputs,
             } => {
                 let call = EthereumCallData::new(&block, &transaction, &call, &inputs, &outputs);
-                if heap.api_version() >= Version::new(0, 0, 6) {
+                if heap.api_version() >= &Version::new(0, 0, 6) {
                     asc_new::<
                         AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
                         _,
                         _,
                     >(heap, &call, gas)?
                     .erase()
-                } else if heap.api_version() >= Version::new(0, 0, 3) {
+                } else if heap.api_version() >= &Version::new(0, 0, 3) {
                     asc_new::<
                         AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
                         _,

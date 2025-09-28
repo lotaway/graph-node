@@ -7,7 +7,7 @@ use graph::{
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     }, components::ethereum::types::{EthereumBlock, StoreTransactionReceipt}, prelude::{
-        web3::{self, types::{Bytes, Transaction, H160, H2048, H256, H64, U256, U64}},
+        web3::{self, types::{Bytes, H160, H2048, H256, H64, U256, U64}},
         BlockNumber, Error, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
     }

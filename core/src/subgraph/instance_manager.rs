@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
+use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::metrics::subgraph::DeploymentStatusMetric;
 use graph::components::store::SourceableStore;
@@ -60,7 +61,6 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
     async fn start_subgraph(
         self: Arc<Self>,
         loc: DeploymentLocator,
-        manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
     ) {
         let runner_index = self.subgraph_start_counter.fetch_add(1, Ordering::SeqCst);
@@ -78,6 +78,22 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
             let deployment_status_metric = deployment_status_metric.clone();
 
             async move {
+                let link_resolver = self
+                    .link_resolver
+                    .for_manifest(&loc.hash.to_string())
+                    .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+
+                let file_bytes = link_resolver
+                    .cat(
+                        &LinkResolverContext::new(&loc.hash, &logger),
+                        &loc.hash.to_ipfs_link(),
+                    )
+                    .await
+                    .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+
+                let manifest: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes)
+                    .map_err(|e| SubgraphAssignmentProviderError::ResolveError(e.into()))?;
+
                 match BlockchainKind::from_manifest(&manifest)? {
                     BlockchainKind::Ethereum => {
                         let runner = instance_manager
@@ -287,7 +303,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             if self.subgraph_store.is_deployed(&graft.base)? {
                 let file_bytes = self
                     .link_resolver
-                    .cat(&logger, &graft.base.to_ipfs_link())
+                    .cat(
+                        &LinkResolverContext::new(&deployment.hash, &logger),
+                        &graft.base.to_ipfs_link(),
+                    )
                     .await?;
                 let yaml = String::from_utf8(file_bytes)?;
 
@@ -303,7 +322,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         );
 
         let manifest = manifest
-            .resolve(&link_resolver, &logger, ENV_VARS.max_spec_version.clone())
+            .resolve(
+                &deployment.hash,
+                &link_resolver,
+                &logger,
+                ENV_VARS.max_spec_version.clone(),
+            )
             .await?;
 
         {
