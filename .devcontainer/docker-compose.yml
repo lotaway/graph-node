@@ -1,11 +1,72 @@
-include:
-  - ../docker/docker-compose.base.yml
-  
+
 services:
   devcontainer:
     image: mcr.microsoft.com/vscode/devcontainers/rust:bullseye
     volumes:
       - ../..:/workspaces:cached
+    network_mode: service:database
     command: sleep infinity
+  ipfs:
+    image: ipfs/kubo:v0.18.1
+    restart: unless-stopped
+    network_mode: service:database
+  database:
+    image: postgres:latest
+    restart: unless-stopped
+    command:
+      [
+        "postgres",
+        "-cshared_preload_libraries=pg_stat_statements"
+      ]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: graph-node
+      POSTGRES_PASSWORD: let-me-in
+      POSTGRES_DB: graph-node
+      
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+
+
+  graph-ipfs:
+    image: ipfs/kubo:v0.17.0
+    container_name: container-default-graph-ipfs
+    ports:
+      - "${GRAPH_IPFS_PORT:-5002}:5001"
+    volumes:
+      - graph_ipfs_data:/data/ipfs:Z
     networks:
       - default-base-graph
+
+  graph-postgres:
+    image: postgres:14
+    container_name: container-default-graph-postgres
+    ports:
+      - "${GRAPH_POSTGRES_PORT:-5433}:5432"
+    command:
+      [
+        "postgres",
+        "-cshared_preload_libraries=pg_stat_statements",
+        "-cmax_connections=200",
+      ]
+    environment:
+      POSTGRES_USER: ${GRAPH_POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${GRAPH_POSTGRES_PASSWORD:-123123}
+      POSTGRES_DB: ${GRAPH_POSTGRES_DB:-graph-node}
+      # FIXME: remove this env. var. which we shouldn't need. Introduced by
+      # <https://github.com/graphprotocol/graph-node/pull/3511>, maybe as a
+      # workaround for https://github.com/docker/for-mac/issues/6270?
+      PGDATA: "/var/lib/postgresql/data"
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    volumes:
+      - graph_postgres_data:/var/lib/postgresql/data:Z
+    networks:
+      - default-base-graph
+
+volumes:
+  graph_ipfs_data:
+  graph_postgres_data:
+
+networks:
+  default-base-graph:
+    driver: bridge
