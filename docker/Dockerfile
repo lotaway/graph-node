@@ -42,7 +42,7 @@ COPY ./docker/.cargo/config.toml /root/.cargo/config.toml
 # End - For China Mainland users
 RUN rustc --version
 RUN cd /graph-node && \
-    rm **/Cargo.lock && \
+    find . -name "Cargo.lock" -delete && \
     RUSTFLAGS="-g" cargo build --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
     && cp target/release/graphman /usr/local/bin/graphman \
