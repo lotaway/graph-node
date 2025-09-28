@@ -1,7 +1,6 @@
 mod arweave_service;
 mod ipfs_service;
 mod metrics;
-mod request;
 
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -25,11 +24,9 @@ use tower::retry::backoff::{Backoff, ExponentialBackoff, ExponentialBackoffMaker
 use tower::util::rng::HasherRng;
 use tower::{Service, ServiceExt};
 
-use self::request::RequestId;
-
 pub use self::metrics::PollingMonitorMetrics;
 pub use arweave_service::{arweave_service, ArweaveService};
-pub use ipfs_service::{ipfs_service, IpfsRequest, IpfsService};
+pub use ipfs_service::{ipfs_service, IpfsService};
 
 const MIN_BACKOFF: Duration = Duration::from_secs(5);
 
@@ -100,15 +97,15 @@ impl<T> Queue<T> {
 ///
 /// The service returns the request ID along with errors or responses. The response is an
 /// `Option`, to represent the object not being found.
-pub fn spawn_monitor<Req, S, E, Res: Send + 'static>(
+pub fn spawn_monitor<ID, S, E, Res: Send + 'static>(
     service: S,
-    response_sender: mpsc::UnboundedSender<(Req, Res)>,
+    response_sender: mpsc::UnboundedSender<(ID, Res)>,
     logger: Logger,
     metrics: Arc<PollingMonitorMetrics>,
-) -> PollingMonitor<Req>
+) -> PollingMonitor<ID>
 where
-    S: Service<Req, Response = Option<Res>, Error = E> + Send + 'static,
-    Req: RequestId + Clone + Send + Sync + 'static,
+    S: Service<ID, Response = Option<Res>, Error = E> + Send + 'static,
+    ID: Display + Clone + Default + Eq + Send + Sync + Hash + 'static,
     E: Display + Send + 'static,
     S::Future: Send,
 {
@@ -128,9 +125,9 @@ where
                         break None;
                     }
 
-                    let req = queue.pop_front();
-                    match req {
-                        Some(req) => break Some((req, ())),
+                    let id = queue.pop_front();
+                    match id {
+                        Some(id) => break Some((id, ())),
 
                         // Nothing on the queue, wait for a queue wake up or cancellation.
                         None => {
@@ -157,39 +154,36 @@ where
                 // the `CallAll` from being polled. This can cause starvation as those requests may
                 // be holding on to resources such as slots for concurrent calls.
                 match response {
-                    Ok((req, Some(response))) => {
-                        backoffs.remove(req.request_id());
-                        let send_result = response_sender.send((req, response));
+                    Ok((id, Some(response))) => {
+                        backoffs.remove(&id);
+                        let send_result = response_sender.send((id, response));
                         if send_result.is_err() {
                             // The receiver has been dropped, cancel this task.
                             break;
                         }
                     }
 
-                    // Object not found, push the request to the back of the queue.
-                    Ok((req, None)) => {
-                        debug!(logger, "not found on polling"; "object_id" => req.request_id().to_string());
+                    // Object not found, push the id to the back of the queue.
+                    Ok((id, None)) => {
+                        debug!(logger, "not found on polling"; "object_id" => id.to_string());
+
                         metrics.not_found.inc();
 
                         // We'll try again after a backoff.
-                        backoff(req, &queue, &mut backoffs);
+                        backoff(id, &queue, &mut backoffs);
                     }
 
-                    // Error polling, log it and push the request to the back of the queue.
-                    Err((Some(req), e)) => {
-                        debug!(logger, "error polling"; "error" => format!("{:#}", e), "object_id" => req.request_id().to_string());
+                    // Error polling, log it and push the id to the back of the queue.
+                    Err((id, e)) => {
+                        debug!(logger, "error polling";
+                                    "error" => format!("{:#}", e),
+                                    "object_id" => id.to_string());
                         metrics.errors.inc();
 
                         // Requests that return errors could mean there is a permanent issue with
                         // fetching the given item, or could signal the endpoint is overloaded.
                         // Either way a backoff makes sense.
-                        backoff(req, &queue, &mut backoffs);
-                    }
-
-                    // poll_ready call failure
-                    Err((None, e)) => {
-                        debug!(logger, "error polling"; "error" => format!("{:#}", e));
-                        metrics.errors.inc();
+                        backoff(id, &queue, &mut backoffs);
                     }
                 }
             }
@@ -199,28 +193,28 @@ where
     PollingMonitor { queue }
 }
 
-fn backoff<Req>(req: Req, queue: &Arc<Queue<Req>>, backoffs: &mut Backoffs<Req::Id>)
+fn backoff<ID>(id: ID, queue: &Arc<Queue<ID>>, backoffs: &mut Backoffs<ID>)
 where
-    Req: RequestId + Send + Sync + 'static,
+    ID: Eq + Hash + Clone + Send + 'static,
 {
     let queue = queue.cheap_clone();
-    let backoff = backoffs.next_backoff(req.request_id().clone());
+    let backoff = backoffs.next_backoff(id.clone());
     graph::spawn(async move {
         backoff.await;
-        queue.push_back(req);
+        queue.push_back(id);
     });
 }
 
 /// Handle for adding objects to be monitored.
-pub struct PollingMonitor<Req> {
-    queue: Arc<Queue<Req>>,
+pub struct PollingMonitor<ID> {
+    queue: Arc<Queue<ID>>,
 }
 
-impl<Req> PollingMonitor<Req> {
-    /// Add a request to the polling queue. New requests have priority and are pushed to the
+impl<ID> PollingMonitor<ID> {
+    /// Add an object id to the polling queue. New requests have priority and are pushed to the
     /// front of the queue.
-    pub fn monitor(&self, req: Req) {
-        self.queue.push_front(req);
+    pub fn monitor(&self, id: ID) {
+        self.queue.push_front(id);
     }
 }
 
@@ -231,16 +225,17 @@ struct ReturnRequest<S> {
 impl<S, Req> Service<Req> for ReturnRequest<S>
 where
     S: Service<Req>,
-    Req: Clone + Send + Sync + 'static,
+    Req: Clone + Default + Send + Sync + 'static,
     S::Error: Send,
     S::Future: Send + 'static,
 {
     type Response = (Req, S::Response);
-    type Error = (Option<Req>, S::Error);
+    type Error = (Req, S::Error);
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx).map_err(|e| (None, e))
+        // `Req::default` is a value that won't be used since if `poll_ready` errors, the service is shot anyways.
+        self.service.poll_ready(cx).map_err(|e| (Req::default(), e))
     }
 
     fn call(&mut self, req: Req) -> Self::Future {
@@ -248,7 +243,7 @@ where
         self.service
             .call(req.clone())
             .map_ok(move |x| (req, x))
-            .map_err(move |e| (Some(req1), e))
+            .map_err(move |e| (req1, e))
             .boxed()
     }
 }

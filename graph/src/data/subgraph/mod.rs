@@ -35,7 +35,7 @@ use crate::{
     bail,
     blockchain::{BlockPtr, Blockchain},
     components::{
-        link_resolver::{LinkResolver, LinkResolverContext},
+        link_resolver::LinkResolver,
         store::{StoreError, SubgraphStore},
     },
     data::{
@@ -475,17 +475,13 @@ pub struct UnresolvedSchema {
 impl UnresolvedSchema {
     pub async fn resolve(
         self,
-        deployment_hash: &DeploymentHash,
         spec_version: &Version,
         id: DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<InputSchema, anyhow::Error> {
         let schema_bytes = resolver
-            .cat(
-                &LinkResolverContext::new(deployment_hash, logger),
-                &self.file,
-            )
+            .cat(logger, &self.file)
             .await
             .with_context(|| format!("failed to resolve schema {}", &self.file.link))?;
         InputSchema::parse(spec_version, &String::from_utf8(schema_bytes)?, id)
@@ -895,9 +891,9 @@ impl<C: Blockchain> SubgraphManifest<C> {
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
-        let unresolved = UnresolvedSubgraphManifest::parse(id.cheap_clone(), raw)?;
+        let unresolved = UnresolvedSubgraphManifest::parse(id, raw)?;
         let resolved = unresolved
-            .resolve(&id, resolver, logger, max_spec_version)
+            .resolve(resolver, logger, max_spec_version)
             .await?;
         Ok(resolved)
     }
@@ -1035,7 +1031,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
 
     pub async fn resolve(
         self,
-        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         max_spec_version: semver::Version,
@@ -1072,16 +1067,14 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         }
 
         let schema = schema
-            .resolve(&id, &spec_version, id.clone(), resolver, logger)
+            .resolve(&spec_version, id.clone(), resolver, logger)
             .await?;
 
         let (data_sources, templates) = try_join(
             data_sources
                 .into_iter()
                 .enumerate()
-                .map(|(idx, ds)| {
-                    ds.resolve(deployment_hash, resolver, logger, idx as u32, &spec_version)
-                })
+                .map(|(idx, ds)| ds.resolve(resolver, logger, idx as u32, &spec_version))
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             templates
@@ -1089,7 +1082,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 .enumerate()
                 .map(|(idx, template)| {
                     template.resolve(
-                        deployment_hash,
                         resolver,
                         &schema,
                         logger,

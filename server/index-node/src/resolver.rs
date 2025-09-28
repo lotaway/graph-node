@@ -8,7 +8,6 @@ use web3::types::Address;
 
 use git_testament::{git_testament, CommitKind};
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
-use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
@@ -136,10 +135,6 @@ impl<S: Store> IndexNodeResolver<S> {
                 _ => unreachable!(),
             })
             .unwrap_or_else(Vec::new);
-
-        if deployments.is_empty() {
-            return Ok(r::Value::List(vec![]));
-        }
 
         let infos = self
             .store
@@ -496,10 +491,7 @@ impl<S: Store> IndexNodeResolver<S> {
         let raw_yaml: serde_yaml::Mapping = {
             let file_bytes = self
                 .link_resolver
-                .cat(
-                    &LinkResolverContext::new(deployment_hash, &self.logger),
-                    &deployment_hash.to_ipfs_link(),
-                )
+                .cat(&self.logger, &deployment_hash.to_ipfs_link())
                 .await
                 .map_err(SubgraphManifestResolveError::ResolveError)?;
 

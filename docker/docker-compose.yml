@@ -3,7 +3,10 @@ include:
   
 services:
   graph-node:
-    image: graphprotocol/graph-node
+    # image: lotaway/graph-node
+    build:
+      context: ..
+      dockerfile: Dockerfile
     container_name: default-graph-node
     ports:
       - "${GRAPH_NODE_PORT:-8000}:8000"

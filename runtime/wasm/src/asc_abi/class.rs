@@ -1,10 +1,7 @@
 use ethabi;
 
 use graph::{
-    data::{
-        store::{self, scalar::Timestamp},
-        subgraph::API_VERSION_0_0_4,
-    },
+    data::store::{self, scalar::Timestamp},
     runtime::{
         gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, HostExportError,
         IndexForAscTypeId, ToAscObj,
@@ -30,10 +27,10 @@ pub enum ArrayBuffer {
 impl ArrayBuffer {
     pub(crate) fn new<T: AscType>(
         values: &[T],
-        api_version: &Version,
+        api_version: Version,
     ) -> Result<Self, DeterministicHostError> {
         match api_version {
-            version if version <= &API_VERSION_0_0_4 => {
+            version if version <= Version::new(0, 0, 4) => {
                 Ok(Self::ApiVersion0_0_4(v0_0_4::ArrayBuffer::new(values)?))
             }
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::ArrayBuffer::new(values)?)),
@@ -98,7 +95,7 @@ impl<T: AscValue> TypedArray<T> {
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
         match heap.api_version() {
-            version if version <= &API_VERSION_0_0_4 => Ok(Self::ApiVersion0_0_4(
+            version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
                 v0_0_4::TypedArray::new(content, heap, gas)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::TypedArray::new(
@@ -204,9 +201,9 @@ pub enum AscString {
 }
 
 impl AscString {
-    pub fn new(content: &[u16], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    pub fn new(content: &[u16], api_version: Version) -> Result<Self, DeterministicHostError> {
         match api_version {
-            version if version <= &API_VERSION_0_0_4 => {
+            version if version <= Version::new(0, 0, 4) => {
                 Ok(Self::ApiVersion0_0_4(v0_0_4::AscString::new(content)?))
             }
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::AscString::new(content)?)),
@@ -278,7 +275,7 @@ impl<T: AscValue> Array<T> {
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
         match heap.api_version() {
-            version if version <= &API_VERSION_0_0_4 => Ok(Self::ApiVersion0_0_4(
+            version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
                 v0_0_4::Array::new(content, heap, gas)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::new(

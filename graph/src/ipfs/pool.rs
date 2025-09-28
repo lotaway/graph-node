@@ -4,8 +4,13 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use futures03::stream::FuturesUnordered;
 use futures03::stream::StreamExt;
+use slog::Logger;
 
-use crate::ipfs::{IpfsClient, IpfsError, IpfsMetrics, IpfsRequest, IpfsResponse, IpfsResult};
+use crate::ipfs::IpfsClient;
+use crate::ipfs::IpfsError;
+use crate::ipfs::IpfsRequest;
+use crate::ipfs::IpfsResponse;
+use crate::ipfs::IpfsResult;
 
 /// Contains a list of IPFS clients and, for each read request, selects the fastest IPFS client
 /// that can provide the content and streams the response from that client.
@@ -14,21 +19,23 @@ use crate::ipfs::{IpfsClient, IpfsError, IpfsMetrics, IpfsRequest, IpfsResponse,
 /// as some of them may already have the content cached.
 pub struct IpfsClientPool {
     clients: Vec<Arc<dyn IpfsClient>>,
+    logger: Logger,
 }
 
 impl IpfsClientPool {
     /// Creates a new IPFS client pool from the specified clients.
-    pub fn new(clients: Vec<Arc<dyn IpfsClient>>) -> Self {
-        assert!(!clients.is_empty());
-        Self { clients }
+    pub fn new(clients: Vec<Arc<dyn IpfsClient>>, logger: &Logger) -> Self {
+        Self {
+            clients,
+            logger: logger.to_owned(),
+        }
     }
 }
 
 #[async_trait]
 impl IpfsClient for IpfsClientPool {
-    fn metrics(&self) -> &IpfsMetrics {
-        // All clients are expected to share the same metrics.
-        self.clients[0].metrics()
+    fn logger(&self) -> &Logger {
+        &self.logger
     }
 
     async fn call(self: Arc<Self>, req: IpfsRequest) -> IpfsResult<IpfsResponse> {
@@ -75,7 +82,9 @@ mod tests {
     use wiremock::ResponseTemplate;
 
     use super::*;
-    use crate::ipfs::{ContentPath, IpfsContext, IpfsGatewayClient, IpfsMetrics, RetryPolicy};
+    use crate::ipfs::ContentPath;
+    use crate::ipfs::IpfsGatewayClient;
+    use crate::ipfs::RetryPolicy;
     use crate::log::discard;
 
     const PATH: &str = "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
@@ -86,9 +95,7 @@ mod tests {
 
     async fn make_client() -> (MockServer, Arc<IpfsGatewayClient>) {
         let server = MockServer::start().await;
-        let client =
-            IpfsGatewayClient::new_unchecked(server.uri(), IpfsMetrics::test(), &discard())
-                .unwrap();
+        let client = IpfsGatewayClient::new_unchecked(server.uri(), &discard()).unwrap();
 
         (server, Arc::new(client))
     }
@@ -138,10 +145,10 @@ mod tests {
             .await;
 
         let clients: Vec<Arc<dyn IpfsClient>> = vec![client_1, client_2, client_3];
-        let pool = Arc::new(IpfsClientPool::new(clients));
+        let pool = Arc::new(IpfsClientPool::new(clients, &discard()));
 
         let bytes = pool
-            .cat_stream(&IpfsContext::test(), &make_path(), None, RetryPolicy::None)
+            .cat_stream(&make_path(), None, RetryPolicy::None)
             .await
             .unwrap()
             .try_fold(BytesMut::new(), |mut acc, chunk| async {
@@ -191,16 +198,10 @@ mod tests {
             .await;
 
         let clients: Vec<Arc<dyn IpfsClient>> = vec![client_1, client_2, client_3];
-        let pool = Arc::new(IpfsClientPool::new(clients));
+        let pool = Arc::new(IpfsClientPool::new(clients, &discard()));
 
         let bytes = pool
-            .cat(
-                &IpfsContext::test(),
-                &make_path(),
-                usize::MAX,
-                None,
-                RetryPolicy::None,
-            )
+            .cat(&make_path(), usize::MAX, None, RetryPolicy::None)
             .await
             .unwrap();
 
@@ -244,10 +245,10 @@ mod tests {
             .await;
 
         let clients: Vec<Arc<dyn IpfsClient>> = vec![client_1, client_2, client_3];
-        let pool = Arc::new(IpfsClientPool::new(clients));
+        let pool = Arc::new(IpfsClientPool::new(clients, &discard()));
 
         let bytes = pool
-            .get_block(&IpfsContext::test(), &make_path(), None, RetryPolicy::None)
+            .get_block(&make_path(), None, RetryPolicy::None)
             .await
             .unwrap();
 

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 
@@ -135,19 +134,6 @@ fn is_trap_deterministic(trap: &Error) -> bool {
     }
 }
 
-struct Arena {
-    // First free byte in the current arena. Set on the first call to `raw_new`.
-    start: i32,
-    // Number of free bytes starting from `arena_start_ptr`.
-    size: i32,
-}
-
-impl Arena {
-    fn new() -> Self {
-        Self { start: 0, size: 0 }
-    }
-}
-
 #[derive(Copy, Clone)]
 pub struct ExperimentalFeatures {
     pub allow_non_deterministic_ipfs: bool,
@@ -168,7 +154,11 @@ pub struct AscHeapCtx {
     // is zeroed when initialized or grown.
     memory: Memory,
 
-    arena: RefCell<Arena>,
+    // First free byte in the current arena. Set on the first call to `raw_new`.
+    arena_start_ptr: i32,
+
+    // Number of free bytes starting from `arena_start_ptr`.
+    arena_free_size: i32,
 }
 
 impl AscHeapCtx {
@@ -176,7 +166,7 @@ impl AscHeapCtx {
         instance: &wasmtime::Instance,
         ctx: &mut WasmInstanceContext<'_>,
         api_version: Version,
-    ) -> anyhow::Result<Arc<AscHeapCtx>> {
+    ) -> anyhow::Result<AscHeapCtx> {
         // Provide access to the WASM runtime linear memory
         let memory = instance
             .get_memory(ctx.as_context_mut(), "memory")
@@ -204,33 +194,14 @@ impl AscHeapCtx {
             ),
         };
 
-        Ok(Arc::new(AscHeapCtx {
+        Ok(AscHeapCtx {
             memory_allocate,
             memory,
-            arena: RefCell::new(Arena::new()),
+            arena_start_ptr: 0,
+            arena_free_size: 0,
             api_version,
             id_of_type,
-        }))
-    }
-
-    fn arena_start_ptr(&self) -> i32 {
-        self.arena.borrow().start
-    }
-
-    fn arena_free_size(&self) -> i32 {
-        self.arena.borrow().size
-    }
-
-    fn set_arena(&self, start_ptr: i32, size: i32) {
-        let mut arena = self.arena.borrow_mut();
-        arena.start = start_ptr;
-        arena.size = size;
-    }
-
-    fn allocated(&self, size: i32) {
-        let mut arena = self.arena.borrow_mut();
-        arena.start += size;
-        arena.size -= size;
+        })
     }
 }
 
@@ -258,20 +229,21 @@ impl AscHeap for WasmInstanceContext<'_> {
         static MIN_ARENA_SIZE: i32 = 10_000;
 
         let size = i32::try_from(bytes.len()).unwrap();
-        if size > self.asc_heap().arena_free_size() {
+        if size > self.asc_heap_ref().arena_free_size {
             // Allocate a new arena. Any free space left in the previous arena is left unused. This
             // causes at most half of memory to be wasted, which is acceptable.
-            let mut arena_size = size.max(MIN_ARENA_SIZE);
+            let arena_size = size.max(MIN_ARENA_SIZE);
 
             // Unwrap: This may panic if more memory needs to be requested from the OS and that
             // fails. This error is not deterministic since it depends on the operating conditions
             // of the node.
-            let memory_allocate = &self.asc_heap().cheap_clone().memory_allocate;
-            let mut start_ptr = memory_allocate
+            let memory_allocate = self.asc_heap_ref().memory_allocate.clone();
+            self.asc_heap_mut().arena_start_ptr = memory_allocate
                 .call(self.as_context_mut(), arena_size)
                 .unwrap();
+            self.asc_heap_mut().arena_free_size = arena_size;
 
-            match &self.asc_heap().api_version {
+            match &self.asc_heap_ref().api_version {
                 version if *version <= Version::new(0, 0, 4) => {}
                 _ => {
                     // This arithmetic is done because when you call AssemblyScripts's `__alloc`
@@ -280,19 +252,19 @@ impl AscHeap for WasmInstanceContext<'_> {
                     // `mmInfo` has size of 4, and everything allocated on AssemblyScript memory
                     // should have alignment of 16, this means we need to do a 12 offset on these
                     // big chunks of untyped allocation.
-                    start_ptr += 12;
-                    arena_size -= 12;
+                    self.asc_heap_mut().arena_start_ptr += 12;
+                    self.asc_heap_mut().arena_free_size -= 12;
                 }
             };
-            self.asc_heap().set_arena(start_ptr, arena_size);
         };
 
-        let ptr = self.asc_heap().arena_start_ptr() as usize;
+        let ptr = self.asc_heap_ref().arena_start_ptr as usize;
 
         // Unwrap: We have just allocated enough space for `bytes`.
-        let memory = self.asc_heap().memory;
+        let memory = self.asc_heap_ref().memory;
         memory.write(self.as_context_mut(), ptr, bytes).unwrap();
-        self.asc_heap().allocated(size);
+        self.asc_heap_mut().arena_start_ptr += size;
+        self.asc_heap_mut().arena_free_size -= size;
 
         Ok(ptr as u32)
     }
@@ -300,7 +272,7 @@ impl AscHeap for WasmInstanceContext<'_> {
     fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         gas.consume_host_fn_with_metrics(Gas::new(GAS_COST_LOAD as u64 * 4), "read_u32")?;
         let mut bytes = [0; 4];
-        self.asc_heap()
+        self.asc_heap_ref()
             .memory
             .read(self, offset as usize, &mut bytes)
             .map_err(|_| {
@@ -330,7 +302,7 @@ impl AscHeap for WasmInstanceContext<'_> {
 
         // TODO: Do we still need this? Can we use read directly?
         let src = self
-            .asc_heap()
+            .asc_heap_ref()
             .memory
             .data(self)
             .get(offset..)
@@ -344,13 +316,12 @@ impl AscHeap for WasmInstanceContext<'_> {
         Ok(init_slice(src, buffer))
     }
 
-    fn api_version(&self) -> &Version {
-        &self.asc_heap().api_version
+    fn api_version(&self) -> Version {
+        self.asc_heap_ref().api_version.clone()
     }
 
     fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
-        let asc_heap = self.asc_heap().cheap_clone();
-        let func = asc_heap.id_of_type.as_ref().unwrap();
+        let func = self.asc_heap_ref().id_of_type.clone().unwrap();
 
         // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
         func.call(self.as_context_mut(), type_id_index as u32)

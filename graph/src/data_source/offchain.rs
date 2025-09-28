@@ -2,15 +2,11 @@ use crate::{
     bail,
     blockchain::{BlockPtr, BlockTime, Blockchain},
     components::{
-        link_resolver::{LinkResolver, LinkResolverContext},
+        link_resolver::LinkResolver,
         store::{BlockNumber, StoredDynamicDataSource},
         subgraph::{InstanceDSTemplate, InstanceDSTemplateInfo},
     },
-    data::{
-        store::scalar::Bytes,
-        subgraph::{DeploymentHash, SPEC_VERSION_0_0_7},
-        value::Word,
-    },
+    data::{store::scalar::Bytes, subgraph::SPEC_VERSION_0_0_7, value::Word},
     data_source,
     ipfs::ContentPath,
     prelude::{DataSourceContext, Link},
@@ -381,7 +377,6 @@ pub struct UnresolvedMapping {
 impl UnresolvedMapping {
     pub async fn resolve(
         self,
-        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         schema: &InputSchema,
         logger: &Logger,
@@ -405,14 +400,7 @@ impl UnresolvedMapping {
             api_version: semver::Version::parse(&self.api_version)?,
             entities,
             handler: self.handler,
-            runtime: Arc::new(
-                resolver
-                    .cat(
-                        &LinkResolverContext::new(deployment_hash, logger),
-                        &self.file,
-                    )
-                    .await?,
-            ),
+            runtime: Arc::new(resolver.cat(logger, &self.file).await?),
             link: self.file,
         })
     }
@@ -458,7 +446,6 @@ impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
 impl UnresolvedDataSourceTemplate {
     pub async fn resolve(
         self,
-        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
@@ -468,7 +455,7 @@ impl UnresolvedDataSourceTemplate {
 
         let mapping = self
             .mapping
-            .resolve(deployment_hash, resolver, schema, logger)
+            .resolve(resolver, schema, logger)
             .await
             .with_context(|| format!("failed to resolve data source template {}", self.name))?;
 

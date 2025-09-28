@@ -44,12 +44,14 @@ impl DeploymentRegistry {
 pub struct SubgraphAssignmentProvider<I> {
     logger_factory: LoggerFactory,
     deployment_registry: DeploymentRegistry,
+    link_resolver: Arc<dyn LinkResolver>,
     instance_manager: Arc<I>,
 }
 
 impl<I: SubgraphInstanceManager> SubgraphAssignmentProvider<I> {
     pub fn new(
         logger_factory: &LoggerFactory,
+        link_resolver: Arc<dyn LinkResolver>,
         instance_manager: I,
         subgraph_metrics: Arc<SubgraphCountMetric>,
     ) -> Self {
@@ -59,6 +61,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProvider<I> {
         // Create the subgraph provider
         SubgraphAssignmentProvider {
             logger_factory,
+            link_resolver: link_resolver.with_retries().into(),
             instance_manager: Arc::new(instance_manager),
             deployment_registry: DeploymentRegistry::new(subgraph_metrics),
         }
@@ -83,9 +86,22 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
             ));
         }
 
+        let link_resolver = self
+            .link_resolver
+            .for_manifest(&loc.hash.to_string())
+            .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+
+        let file_bytes = link_resolver
+            .cat(&logger, &loc.hash.to_ipfs_link())
+            .await
+            .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+
+        let raw: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes)
+            .map_err(|e| SubgraphAssignmentProviderError::ResolveError(e.into()))?;
+
         self.instance_manager
             .cheap_clone()
-            .start_subgraph(loc, stop_block)
+            .start_subgraph(loc, raw, stop_block)
             .await;
 
         Ok(())
